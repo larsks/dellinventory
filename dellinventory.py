@@ -36,6 +36,7 @@ class Host:
     system_resolve_ref = (
         ('Bios', 'Bios'),
         ('Links.ManagedBy', 'ManagedBy'),
+        ('Links.Oem.DELL.BootOrder', 'BootOrder'),
     )
 
     def __init__(self, addr, loop, session):
@@ -107,6 +108,7 @@ class Host:
                     LOG.debug('path %s resolved to %s', path, attr)
                 except KeyError:
                     LOG.warn('attribute %s not available, skipping', path)
+                    import pdb; pdb.set_trace()
                     continue
 
                 if isinstance(attr, list):
@@ -123,7 +125,7 @@ class Host:
             await asyncio.gather(*tasks)
 
         except aiohttp.client_exceptions.ClientError as err:
-            LOG.error('failed to connect to %s: %s', self.addr, err)
+            LOG.error('failed to connect to %s: %s (%s)', self.addr, err, type(err))
 
         return self
 
