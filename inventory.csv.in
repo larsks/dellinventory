@@ -1,0 +1,6 @@
+Host,Bios Version,iDRAC Version,Total memory,Num processors,Processor Model,Num disks
+{% for idrac, data in idracs|ipsort %}
+{% if data %}
+{{ idrac }},{{data.ServiceTag}},{{data.BiosVersion}},{{data.ManagedBy_0.FirmwareVersion}},{{data.MemorySummary.TotalSystemMemoryGiB|int}},{{data.ProcessorSummary.Count}},{{data.ProcessorSummary.Model}},{{data.Storage.0.Drives|length}}
+{% endif %}
+{% endfor %}

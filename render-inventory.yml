@@ -1,0 +1,10 @@
+- hosts: localhost
+  gather_facts: false
+  tasks:
+    - include_vars:
+        file: "./inventory.json"
+        name: "idracs"
+
+    - template:
+        src: "./inventory.csv.in"
+        dest: "./inventory.csv"
