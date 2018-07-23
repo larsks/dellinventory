@@ -4,6 +4,7 @@ import aiohttp
 import argparse
 import asyncio
 import json
+import jsonpointer
 import logging
 import sys
 
@@ -14,6 +15,20 @@ LOG = logging.getLogger(__name__)
 
 
 class Host:
+    system_resolve_members = (
+        '/EthernetInterfaces',
+        '/Storage',
+        '/Storage/Drives',
+        '/Memory',
+        '/Processors',
+    )
+
+    system_resolve_ref = (
+        '/Bios',
+        '/Links/ManagedBy/0',
+        '/Links/Oem/DELL/BootOrder',
+    )
+
     system_simple_attr = (
         ('BiosVersion', 'BiosVersion'),
         ('HostName', 'HostName'),
@@ -26,30 +41,21 @@ class Host:
         ('AssetTag', 'AssetTag'),
     )
 
-    system_resolve_members = (
-        ('EthernetInterfaces', 'EthernetInterfaces'),
-        ('Storage', 'Storage'),
-        ('Memory', 'Memory'),
-        ('Processors', 'Processors'),
-    )
-
-    system_resolve_ref = (
-        ('Bios', 'Bios'),
-        ('Links.ManagedBy', 'ManagedBy'),
-        ('Links.Oem.DELL.BootOrder', 'BootOrder'),
-    )
-
     def __init__(self, addr, loop, session):
         self.addr = addr
         self.loop = loop
         self.session = session
         self.system = {}
 
-    async def resolve_member_list(self, obj, attr, ref):
+    async def resolve_members(self, obj, path):
         LOG.info('%s: looking up information about %s',
-                 self.addr, attr)
+                 self.addr, path)
 
-        url = 'https://{.addr}{ref}'.format(self, ref=ref)
+        id = jsonpointer.resolve_pointer(
+            obj, '{}/@odata.id'.format(path))
+        LOG.debug('%s: got id: %s', self.addr, id)
+
+        url = 'https://{.addr}{}'.format(self, id)
         res = await self.get(url)
 
         tasks = []
@@ -58,7 +64,8 @@ class Host:
                 self, member=member['@odata.id'])
             tasks.append(self.get(url))
 
-        obj[attr] = await asyncio.gather(*tasks)
+        jsonpointer.set_pointer(
+            obj, path, await asyncio.gather(*tasks))
 
     async def resolve_ref(self, obj, attr, ref):
         LOG.info('%s: looking up information about %s',
@@ -77,51 +84,13 @@ class Host:
         LOG.info('%s: looking up information about system', self.addr)
         url = 'https://{.addr}/redfish/v1/Systems/System.Embedded.1'.format(self)  # NOQA
         try:
-            res = await self.get(url)
-            system = {}
+            system = await self.get(url)
             self.system = system
 
-            for path, name in self.system_simple_attr:
-                try:
-                    attr = reduce(operator.getitem, path.split('.'), res)
-                except KeyError:
-                    LOG.warn('attribute %s not available, skipping', path)
-                    continue
-                system[name] = attr
-
             tasks = []
-            for path, name in self.system_resolve_members:
-                try:
-                    attr = reduce(operator.getitem, path.split('.'), res)
-                except KeyError:
-                    LOG.warn('attribute %s not available, skipping', path)
-                    continue
-
-                tasks.append(
-                    self.resolve_member_list(
-                        self.system, name, attr['@odata.id']))
-
-            for path, name in self.system_resolve_ref:
-                try:
-                    LOG.debug('resolving path %s', path)
-                    attr = reduce(operator.getitem, path.split('.'), res)
-                    LOG.debug('path %s resolved to %s', path, attr)
-                except KeyError:
-                    LOG.warn('attribute %s not available, skipping', path)
-                    import pdb; pdb.set_trace()
-                    continue
-
-                if isinstance(attr, list):
-                    for i, item in enumerate(attr):
-                        tasks.append(
-                            self.resolve_ref(
-                                self.system, '{}_{}'.format(name, i),
-                                item['@odata.id']))
-                else:
-                    tasks.append(
-                        self.resolve_ref(
-                            self.system, name, attr['@odata.id']))
-
+            for path in self.system_resolve_members:
+                tasks.append(self.resolve_members(
+                    system, path))
             await asyncio.gather(*tasks)
 
         except aiohttp.client_exceptions.ClientError as err:
