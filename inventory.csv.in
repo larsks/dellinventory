@@ -2,5 +2,7 @@ Host,Service tag,Bios version,iDRAC version,Total memory,Num processors,Processo
 {% for idrac, data in idracs|ipsort %}
 {% if data %}
 {{ idrac }},{{data.ServiceTag}},{{data.BiosVersion}},{{data.ManagedBy_0.FirmwareVersion}},{{data.MemorySummary.TotalSystemMemoryGiB|int}},{{data.ProcessorSummary.Count}},{{data.ProcessorSummary.Model}},{{data.Storage.0.Drives|length}},{{data.BootOrder.Attributes.BootSeq.0.Name}}
+{% else %}
+{{ idrac }},,,,,,,,
 {% endif %}
 {% endfor %}
