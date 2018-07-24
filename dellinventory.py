@@ -92,6 +92,9 @@ class Host:
         target = expr.find(obj)
         LOG.debug('found %d matches', len(target))
 
+        if len(target) == 0:
+            LOG.warning('found 0 matches for %s', path)
+
         tasks = []
         for match in target:
             LOG.debug('resolved %s to result type %s', path, type(match.value))
