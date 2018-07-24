@@ -1,8 +1,8 @@
-Host,Service tag,Bios version,iDRAC version,Total memory,Num processors,Processor model,Num disks,Boot device
+Host,Inventory status,Service tag,Bios version,iDRAC version,Total memory,Num processors,Processor model,Num disks,Boot device
 {% for idrac, data in idracs|ipsort %}
-{% if data %}
-{{ idrac }},{{data.ServiceTag}},{{data.BiosVersion}},{{data.ManagedBy_0.FirmwareVersion}},{{data.MemorySummary.TotalSystemMemoryGiB|int}},{{data.ProcessorSummary.Count}},{{data.ProcessorSummary.Model}},{{data.Storage.0.Drives|length}},{{data.BootOrder.Attributes.BootSeq.0.Name}}
+{% if data.InventoryStatus == 'OKAY' %}
+{{ idrac }},{{ data.InventoryStatus }},{{data.SKU}},{{data.BiosVersion}},{{data.Links.ManagedBy.0.FirmwareVersion}},{{data.MemorySummary.TotalSystemMemoryGiB|int}},{{data.ProcessorSummary.Count}},{{data.ProcessorSummary.Model}},{{data.Storage.Members.0.Drives|length}},{{data.Links.Oem.DELL.BootOrder.Attributes.BootSeq.0.Name}}
 {% else %}
-{{ idrac }},,,,,,,,
+{{ idrac }},{{ data.InventoryStatus }},,,,,,,
 {% endif %}
 {% endfor %}
