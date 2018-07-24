@@ -145,6 +145,9 @@ def parse_args():
     p.add_argument('--hosts-file', '-f')
     p.add_argument('--user', '-u')
     p.add_argument('--output', '-o')
+    p.add_argument('--limit', '-l',
+                   help='Limit number of simultaneous connections to a host',
+                   type=int)
     p.add_argument('hosts', nargs='*', default=[])
 
     g = p.add_argument_group()
@@ -165,17 +168,18 @@ def parse_args():
     return p.parse_args()
 
 
-async def get_all_hosts(hosts, loop, credentials=None):
-    if credentials:
-        _creds = credentials.split(':', 1)
-        auth = aiohttp.BasicAuth(*_creds)
+async def get_all_hosts(hosts, loop, args):
+    if args.user:
+        creds = args.user.split(':', 1)
+        auth = aiohttp.BasicAuth(*creds)
     else:
         auth = None
 
     async with aiohttp.ClientSession(
         auth=auth,
         trust_env=True,
-        connector=aiohttp.TCPConnector(verify_ssl=False),
+        connector=aiohttp.TCPConnector(verify_ssl=False,
+                                       limit_per_host=args.limit),
     ) as session:
         tasks = []
         for addr in hosts:
@@ -198,8 +202,7 @@ def main():
     hosts.extend(args.hosts)
 
     loop = asyncio.get_event_loop()
-    task = loop.create_task(get_all_hosts(hosts, loop,
-                                          credentials=args.user))
+    task = loop.create_task(get_all_hosts(hosts, loop, args))
     inventory = loop.run_until_complete(task)
 
     with (open(args.output, 'w') if args.output else sys.stdout) as fd:
