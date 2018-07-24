@@ -1,1 +1,2 @@
 aiohttp
+jsonpath_ng
