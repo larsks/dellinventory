@@ -12,11 +12,14 @@ LOG = logging.getLogger(__name__)
 
 
 async def chain(tasks):
+    '''Execute a series of tasks in sequence.'''
     for task in tasks:
         await task
 
 
 class Host:
+    '''Represents a remote redfish v1 endpoint.'''
+
     redfish_path = '/redfish/v1'
 
     resolve_paths = (
@@ -39,6 +42,18 @@ class Host:
         self.system = {}
 
     async def resolve_dict(self, obj, match):
+        '''Resolve a single `odata.id` attribute.
+
+        This expects a dictionary of the form:
+
+            {"@odata.id": "/redfish/v1/..."}
+
+        It replaces the associated key with the value of the content
+        referred to by the `@odata.id` attribute.  If the returned
+        content has a `Members` attribute, this will continue by
+        replacing the original content by calling `resolve_list` on
+        the value of the `Members` attribute.'''
+
         url = '{.endpoint}{}'.format(self, match.value['@odata.id'])
         data = await self.get(url)
 
@@ -49,6 +64,19 @@ class Host:
         match.path.update(match.context.value, data)
 
     async def resolve_list(self, obj, match):
+        '''Resolve a list of `@odata.id` attributes.
+
+        This expects a list of the form:
+
+            [
+              {"@odata.id": ...},
+              {"@odata.id": ...},
+              ...
+            ]
+
+        It will replace each list item with the content from the URI
+        referenced by the corresponding `@odata.id` attribute.'''
+
         tasks = []
         for item in match.value:
             url = '{.endpoint}{}'.format(self, item['@odata.id'])
@@ -57,6 +85,8 @@ class Host:
         match.path.update(match.context.value, data)
 
     async def resolve(self, obj, path):
+        '''Resolve `@odata.id` pointers'''
+
         LOG.info('%s: looking up information about %s', self.addr, path)
         expr = jsonpath.parse(path)
         target = expr.find(obj)
@@ -73,12 +103,20 @@ class Host:
         await asyncio.gather(*tasks)
 
     async def get(self, url):
+        '''GET a URL and return the JSON content.'''
+
         LOG.debug('GET %s', url)
         async with self.session.get(url) as resp:
             assert resp.status == 200
             return await resp.json()
 
     async def get_system(self):
+        '''Get summary information about the system.
+
+        This is the main entrypoint for the Host class.  It assumes
+        that there exists a remote resource
+        /Systems/System.Embedded.1.'''
+
         LOG.info('%s: looking up information about system', self.addr)
         url = '{0.endpoint}{0.redfish_path}/Systems/System.Embedded.1'.format(self)  # NOQA
         try:
