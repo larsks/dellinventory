@@ -22,6 +22,10 @@ class Host:
 
     redfish_path = '/redfish/v1'
 
+    # A list of remote paths to resolve by replacing @odata.id attributes
+    # with the content to which they refer. Each item in this list is a tuple;
+    # all tuples will be resolved in parallel, and the elements of each 
+    # tuple will be resolved in sequence.
     resolve_paths = (
         ('EthernetInterfaces',),
         ('Storage', 'Storage.Members[*].Drives'),
