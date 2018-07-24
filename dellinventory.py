@@ -4,75 +4,73 @@ import aiohttp
 import argparse
 import asyncio
 import json
-import jsonpointer
+import jsonpath_ng as jsonpath
 import logging
 import sys
-
-from functools import reduce
-import operator
 
 LOG = logging.getLogger(__name__)
 
 
+async def chain(tasks):
+    for task in tasks:
+        await task
+
+
 class Host:
-    system_resolve_members = (
-        '/EthernetInterfaces',
-        '/Storage',
-        '/Storage/Drives',
-        '/Memory',
-        '/Processors',
+    redfish_path = '/redfish/v1'
+
+    resolve_paths = (
+        ('EthernetInterfaces',),
+        ('Storage', 'Storage.Members[*].Drives'),
+        ('Memory',),
+        ('Processors',),
+        ('Links.ManagedBy',),
+        ('Bios',),
+        ('Links.Oem.DELL.BootOrder',),
     )
 
-    system_resolve_ref = (
-        '/Bios',
-        '/Links/ManagedBy/0',
-        '/Links/Oem/DELL/BootOrder',
-    )
-
-    system_simple_attr = (
-        ('BiosVersion', 'BiosVersion'),
-        ('HostName', 'HostName'),
-        ('Memory', 'Memory'),
-        ('Processors', 'Processors'),
-        ('MemorySummary', 'MemorySummary'),
-        ('ProcessorSummary', 'ProcessorSummary'),
-        ('SKU', 'ServiceTag'),
-        ('SerialNumber', 'SerialNumber'),
-        ('AssetTag', 'AssetTag'),
-    )
+    members = jsonpath.parse('Members')
 
     def __init__(self, addr, loop, session):
         self.addr = addr
         self.loop = loop
         self.session = session
+        self.endpoint = 'https://{}'.format(addr)
         self.system = {}
 
-    async def resolve_members(self, obj, path):
-        LOG.info('%s: looking up information about %s',
-                 self.addr, path)
+    async def resolve_dict(self, obj, match):
+        url = '{.endpoint}{}'.format(self, match.value['@odata.id'])
+        data = await self.get(url)
 
-        id = jsonpointer.resolve_pointer(
-            obj, '{}/@odata.id'.format(path))
-        LOG.debug('%s: got id: %s', self.addr, id)
+        members = self.members.find(data)
+        for submatch in members:
+            await self.resolve_list(data, submatch)
 
-        url = 'https://{.addr}{}'.format(self, id)
-        res = await self.get(url)
+        match.path.update(match.context.value, data)
+
+    async def resolve_list(self, obj, match):
+        tasks = []
+        for item in match.value:
+            url = '{.endpoint}{}'.format(self, item['@odata.id'])
+            tasks.append(self.get(url))
+        data = await asyncio.gather(*tasks)
+        match.path.update(match.context.value, data)
+
+    async def resolve(self, obj, path):
+        LOG.info('%s: looking up information about %s', self.addr, path)
+        expr = jsonpath.parse(path)
+        target = expr.find(obj)
+        LOG.debug('found %d matches', len(target))
 
         tasks = []
-        for member in res['Members']:
-            url = 'https://{.addr}{member}'.format(
-                self, member=member['@odata.id'])
-            tasks.append(self.get(url))
+        for match in target:
+            LOG.debug('resolved %s to result type %s', path, type(match.value))
+            if isinstance(match.value, dict) and '@odata.id' in match.value:
+                tasks.append(self.resolve_dict(obj, match))
+            elif isinstance(match.value, list):
+                tasks.append(self.resolve_list(obj, match))
 
-        jsonpointer.set_pointer(
-            obj, path, await asyncio.gather(*tasks))
-
-    async def resolve_ref(self, obj, attr, ref):
-        LOG.info('%s: looking up information about %s',
-                 self.addr, attr)
-
-        url = 'https://{.addr}{ref}'.format(self, ref=ref)
-        obj[attr] = await self.get(url)
+        await asyncio.gather(*tasks)
 
     async def get(self, url):
         LOG.debug('GET %s', url)
@@ -82,19 +80,21 @@ class Host:
 
     async def get_system(self):
         LOG.info('%s: looking up information about system', self.addr)
-        url = 'https://{.addr}/redfish/v1/Systems/System.Embedded.1'.format(self)  # NOQA
+        url = '{0.endpoint}{0.redfish_path}/Systems/System.Embedded.1'.format(self)  # NOQA
         try:
             system = await self.get(url)
             self.system = system
 
             tasks = []
-            for path in self.system_resolve_members:
-                tasks.append(self.resolve_members(
-                    system, path))
+            for pathset in self.resolve_paths:
+                tasks.append(chain(
+                    self.resolve(system, path) for path in pathset))
             await asyncio.gather(*tasks)
-
+            self.system.update({'InventoryStatus': 'OKAY'})
         except aiohttp.client_exceptions.ClientError as err:
-            LOG.error('failed to connect to %s: %s (%s)', self.addr, err, type(err))
+            self.system.update({'InventoryStatus': 'FAIL'})
+            LOG.error('failed to connect to %s: %s (%s)',
+                      self.addr, err, type(err))
 
         return self
 
