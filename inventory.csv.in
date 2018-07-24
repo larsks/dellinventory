@@ -1,7 +1,7 @@
 Host,Inventory status,Service tag,Bios version,iDRAC version,Total memory,Num processors,Processor model,Num disks,Boot device
 {% for idrac, data in idracs|ipsort %}
 {% if data.InventoryStatus == 'OKAY' %}
-{{ idrac }},{{ data.InventoryStatus }},{{data.SKU}},{{data.BiosVersion}},{{data.Links.ManagedBy.0.FirmwareVersion}},{{data.MemorySummary.TotalSystemMemoryGiB|int}},{{data.ProcessorSummary.Count}},{{data.ProcessorSummary.Model}},{{data.Storage.Members.0.Drives|length}},{{data.Links.Oem.DELL.BootOrder.Attributes.BootSeq.0.Name}}
+{{ idrac }},{{ data.InventoryStatus }},"=HYPERLINK(""https://www.dell.com/support/home/us/en/04/product-support/servicetag/{{data.SKU}}"",""{{data.SKU}}"")",{{data.BiosVersion}},{{data.Links.ManagedBy.0.FirmwareVersion}},{{data.MemorySummary.TotalSystemMemoryGiB|int}},{{data.ProcessorSummary.Count}},{{data.ProcessorSummary.Model}},{{data.Storage.Members.0.Drives|length}},{{data.Links.Oem.DELL.BootOrder.Attributes.BootSeq.0.Name}}
 {% else %}
 {{ idrac }},{{ data.InventoryStatus }},,,,,,,
 {% endif %}
